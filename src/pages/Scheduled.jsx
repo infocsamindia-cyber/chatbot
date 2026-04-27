@@ -1,7 +1,8 @@
+// Yeh replace karo (line 1-6):
 import { useState, useEffect } from 'react';
-import { db, auth } from '../services/firebaseConfig';
+import { db } from '../services/firebaseConfig';
 import {
-  collection, addDoc, getDocs, deleteDoc,
+  collection, getDocs, deleteDoc,
   doc, query, orderBy, updateDoc
 } from 'firebase/firestore';
 
@@ -22,12 +23,12 @@ const STATUS_COLORS = {
 };
 
 export default function Scheduled() {
-  const [posts, setPosts]         = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [filter, setFilter]       = useState('all');
-  const [view, setView]           = useState('list'); // list | calendar
+  const [posts, setPosts]           = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [filter, setFilter]         = useState('all');
+  const [view, setView]             = useState('list');
   const [expandedId, setExpandedId] = useState(null);
-  const [stats, setStats]         = useState({ total: 0, scheduled: 0, posted: 0, draft: 0 });
+  const [stats, setStats]           = useState({ total: 0, scheduled: 0, posted: 0, draft: 0 });
 
   useEffect(() => { loadPosts(); }, []);
 
@@ -68,7 +69,6 @@ export default function Scheduled() {
     ? posts
     : posts.filter(p => (p.status || 'draft') === filter);
 
-  // Group by date for calendar
   const byDate = filtered.reduce((acc, p) => {
     const date = p.scheduledAt
       ? new Date(p.scheduledAt).toDateString()
@@ -98,14 +98,15 @@ export default function Scheduled() {
       <div className="px-8 py-6 max-w-6xl">
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[
-            { label: 'Total Posts',  value: stats.total,     icon: '📝', color: 'purple' },
-            { label: 'Scheduled',    value: stats.scheduled, icon: '⏰', color: 'yellow' },
-            { label: 'Posted',       value: stats.posted,    icon: '✅', color: 'green'  },
-            { label: 'Drafts',       value: stats.draft,     icon: '📋', color: 'gray'   },
+            { label: 'Total Posts', value: stats.total,     icon: '📝' },
+            { label: 'Scheduled',   value: stats.scheduled, icon: '⏰' },
+            { label: 'Posted',      value: stats.posted,    icon: '✅' },
+            { label: 'Drafts',      value: stats.draft,     icon: '📋' },
           ].map(s => (
-            <div key={s.label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-purple-500/40 transition">
+            <div key={s.label}
+              className="bg-gray-900 border border-gray-800 rounded-2xl p-5 hover:border-purple-500/40 transition">
               <div className="text-3xl mb-2">{s.icon}</div>
               <div className="text-3xl font-black">{s.value}</div>
               <div className="text-gray-400 text-sm">{s.label}</div>
@@ -114,8 +115,8 @@ export default function Scheduled() {
         </div>
 
         {/* Filter + View Toggle */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex gap-2">
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+          <div className="flex gap-2 flex-wrap">
             {['all','scheduled','posted','draft'].map(f => (
               <button key={f} onClick={() => setFilter(f)}
                 className={`px-4 py-2 rounded-xl text-sm font-medium capitalize transition border ${
@@ -123,17 +124,24 @@ export default function Scheduled() {
                     ? 'bg-purple-600 border-purple-500 text-white'
                     : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-purple-500'
                 }`}>
-                {f === 'all' ? '🗂 All' : f === 'scheduled' ? '⏰ Scheduled' : f === 'posted' ? '✅ Posted' : '📋 Draft'}
+                {f === 'all'       ? '🗂 All'
+                : f === 'scheduled' ? '⏰ Scheduled'
+                : f === 'posted'    ? '✅ Posted'
+                : '📋 Draft'}
               </button>
             ))}
           </div>
           <div className="flex gap-2">
             <button onClick={() => setView('list')}
-              className={`px-4 py-2 rounded-xl text-sm transition ${view==='list' ? 'bg-purple-600' : 'bg-gray-800'}`}>
+              className={`px-4 py-2 rounded-xl text-sm transition ${
+                view === 'list' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'
+              }`}>
               ☰ List
             </button>
             <button onClick={() => setView('calendar')}
-              className={`px-4 py-2 rounded-xl text-sm transition ${view==='calendar' ? 'bg-purple-600' : 'bg-gray-800'}`}>
+              className={`px-4 py-2 rounded-xl text-sm transition ${
+                view === 'calendar' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'
+              }`}>
               📅 Calendar
             </button>
           </div>
@@ -152,7 +160,9 @@ export default function Scheduled() {
           <div className="text-center py-20 bg-gray-900 border border-gray-800 rounded-2xl">
             <div className="text-6xl mb-4">📭</div>
             <p className="text-white font-bold text-lg mb-2">Koi post nahi mili</p>
-            <p className="text-gray-400 text-sm">Create Post ya Auto Mode se posts generate karo</p>
+            <p className="text-gray-400 text-sm">
+              Create Post ya Auto Mode se posts generate karo
+            </p>
           </div>
         )}
 
@@ -166,7 +176,6 @@ export default function Scheduled() {
             <div key={post.id}
               className="mb-4 bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden hover:border-purple-500/40 transition">
 
-              {/* Post header */}
               <div className="p-5 flex items-start gap-4">
 
                 {/* Platform icons */}
@@ -176,14 +185,14 @@ export default function Scheduled() {
                     return <span key={pid} className="text-xl">{p?.icon || '📱'}</span>;
                   })}
                   {platforms.length > 3 && (
-                    <span className="text-xs text-gray-500">+{platforms.length-3}</span>
+                    <span className="text-xs text-gray-500">+{platforms.length - 3}</span>
                   )}
                 </div>
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[status]}`}>
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[status] || STATUS_COLORS.draft}`}>
                       {status === 'scheduled' ? '⏰ Scheduled'
                        : status === 'posted'  ? '✅ Posted'
                        : status === 'failed'  ? '❌ Failed'
@@ -199,11 +208,16 @@ export default function Scheduled() {
                         ⏰ {new Date(post.scheduledAt).toLocaleString('en-IN')}
                       </span>
                     )}
+                    {post.source === 'auto' && (
+                      <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
+                        🤖 Auto
+                      </span>
+                    )}
                   </div>
                   <p className="text-white font-medium text-sm truncate">{post.topic}</p>
                   <p className="text-gray-500 text-xs mt-1">
-                    {new Date(post.createdAt).toLocaleString('en-IN')} •{' '}
-                    {platforms.length} platforms
+                    {post.createdAt ? new Date(post.createdAt).toLocaleString('en-IN') : '—'}
+                    {' • '}{platforms.length} platforms
                   </p>
                 </div>
 
@@ -215,12 +229,14 @@ export default function Scheduled() {
                   </button>
                   {status !== 'posted' && (
                     <button onClick={() => markPosted(post.id)}
-                      className="px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded-lg text-sm transition">
+                      className="px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded-lg text-sm transition"
+                      title="Mark as Posted">
                       ✅
                     </button>
                   )}
                   <button onClick={() => deletePost(post.id)}
-                    className="px-3 py-1.5 bg-red-900 hover:bg-red-800 rounded-lg text-sm transition">
+                    className="px-3 py-1.5 bg-red-900 hover:bg-red-800 rounded-lg text-sm transition"
+                    title="Delete">
                     🗑️
                   </button>
                 </div>
@@ -238,8 +254,9 @@ export default function Scheduled() {
                         <div key={pid} className="bg-gray-800 rounded-xl p-4">
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-bold text-sm">{p.icon} {p.label}</span>
-                            <button onClick={() => navigator.clipboard.writeText(content)}
-                              className="text-xs bg-purple-700 px-2 py-1 rounded-lg">
+                            <button
+                              onClick={() => navigator.clipboard.writeText(content)}
+                              className="text-xs bg-purple-700 hover:bg-purple-600 px-2 py-1 rounded-lg transition">
                               📋 Copy
                             </button>
                           </div>
@@ -259,7 +276,7 @@ export default function Scheduled() {
         {/* CALENDAR VIEW */}
         {!loading && view === 'calendar' && (
           <div>
-            {Object.entries(byDate).length === 0 && !loading && (
+            {Object.entries(byDate).length === 0 && (
               <div className="text-center py-20 text-gray-400">Koi posts nahi</div>
             )}
             {Object.entries(byDate).map(([date, datePosts]) => (
@@ -271,32 +288,43 @@ export default function Scheduled() {
                   <div className="flex-1 h-px bg-gray-800"/>
                   <span className="text-gray-500 text-xs">{datePosts.length} posts</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3 ml-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 ml-4">
                   {datePosts.map(post => {
                     const status = post.status || 'draft';
                     return (
                       <div key={post.id}
                         className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-purple-500/40 transition">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[status]}`}>
-                            {status === 'posted' ? '✅ Posted' : status === 'scheduled' ? '⏰ Scheduled' : '📋 Draft'}
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[status] || STATUS_COLORS.draft}`}>
+                            {status === 'posted'    ? '✅ Posted'
+                             : status === 'scheduled' ? '⏰ Scheduled'
+                             : '📋 Draft'}
                           </span>
+                          {post.source === 'auto' && (
+                            <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
+                              🤖 Auto
+                            </span>
+                          )}
                         </div>
                         <p className="text-white text-sm font-medium truncate">{post.topic}</p>
-                        <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center justify-between mt-3">
                           <div className="flex gap-1">
                             {(post.platforms || []).slice(0,4).map(pid => {
                               const p = PLATFORMS.find(x => x.id === pid);
-                              return <span key={pid} className="text-sm">{p?.icon}</span>;
+                              return <span key={pid} className="text-base">{p?.icon}</span>;
                             })}
                           </div>
                           <div className="flex gap-1">
                             {status !== 'posted' && (
                               <button onClick={() => markPosted(post.id)}
-                                className="text-xs bg-green-700 px-2 py-1 rounded-lg">✅</button>
+                                className="text-xs bg-green-700 hover:bg-green-600 px-2 py-1 rounded-lg transition">
+                                ✅
+                              </button>
                             )}
                             <button onClick={() => deletePost(post.id)}
-                              className="text-xs bg-red-900 px-2 py-1 rounded-lg">🗑️</button>
+                              className="text-xs bg-red-900 hover:bg-red-800 px-2 py-1 rounded-lg transition">
+                              🗑️
+                            </button>
                           </div>
                         </div>
                       </div>

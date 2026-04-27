@@ -3,14 +3,6 @@
 // Har baar alag layout, color, style, content — kabhi same nahi!
 // ═══════════════════════════════════════════════════════════════
 
-const SERVICES = [
-  '🌐 Website Development',
-  '📱 Mobile App Development',
-  '⚙️ Custom Software',
-  '🎨 UI/UX Design',
-  '📢 Meta Ads & SEO',
-  '🛒 E-Commerce Solutions',
-];
 
 const COMPANY = {
   name: 'AYANIX TECH',
@@ -385,8 +377,7 @@ function drawMagazine(ctx, text, platform, theme, tagline, services) {
   ctx.shadowBlur = 0;
 
   // Colored accent word (first word)
-  const firstWord = text.split(' ')[0].toUpperCase();
-  const restWords = text.split(' ').slice(1).join(' ').toUpperCase();
+  
   // (already drawn above, this is decorative)
 
   // Tagline below

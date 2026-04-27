@@ -263,6 +263,7 @@ Write ONLY the post content. No "Here is your post:" prefix.`;
   };
 
   // ── Auto daily check ──────────────────────────────────────
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const saved = JSON.parse(localStorage.getItem('todaysPosts') || '{}');
     if (saved.date === new Date().toDateString()) {
@@ -272,7 +273,6 @@ Write ONLY the post content. No "Here is your post:" prefix.`;
     }
 
     if (autoEnabled) {
-      // Check every hour
       timerRef.current = setInterval(() => {
         const s = JSON.parse(localStorage.getItem('todaysPosts') || '{}');
         if (s.date !== new Date().toDateString()) {
