@@ -8,6 +8,7 @@ import CreatePost from './pages/CreatePost';
 import Scheduled from './pages/Scheduled';
 import AutoMode from './pages/AutoMode';
 import Login from './pages/Login';
+import ConnectAccounts from './pages/ConnectAccounts';
 
 function App() {
   const [user, setUser]       = useState(null);
@@ -43,6 +44,7 @@ function App() {
             <Route path="/scheduled" element={<Scheduled />} />
             <Route path="/auto"      element={<AutoMode />} />
             <Route path="*"          element={<Navigate to="/" />} />
+            <Route path="/connect" element={<ConnectAccounts />} />
           </Routes>
         </div>
       </div>

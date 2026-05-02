@@ -7,6 +7,7 @@ const links = [
   { path: '/create',    icon: '✍️', label: 'Create Post'  },
   { path: '/scheduled', icon: '📅', label: 'Scheduled'    },
   { path: '/auto',      icon: '🤖', label: 'Auto Mode'    },
+  { path: '/connect', icon: '🔗', label: 'Connect Accounts' },
 ];
 
 export default function Sidebar({ user }) {
