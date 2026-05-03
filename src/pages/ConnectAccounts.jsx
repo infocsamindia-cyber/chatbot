@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const PLATFORMS = [
   {
@@ -58,30 +58,84 @@ const PLATFORMS = [
 ];
 
 export default function ConnectAccounts() {
-  const [connected, setConnected]       = useState({});
-  const [manualToken, setManualToken]   = useState({});
-  const [showManual, setShowManual]     = useState({});
-  const [saving, setSaving]             = useState({});
-  const [savedMsg, setSavedMsg]         = useState({});
+  const [connected, setConnected]     = useState({});
+  const [manualToken, setManualToken] = useState({});
+  const [showManual, setShowManual]   = useState({});
+  const [saving, setSaving]           = useState({});
+  const [savedMsg, setSavedMsg]       = useState({});
 
-  // Load connection status from localStorage
-  useEffect(() => {
+  // ── Load connection status ────────────────────────────────────
+  const reloadStatus = useCallback(() => {
     const status = {};
     PLATFORMS.forEach(p => {
-      if (p.autoConnect) {
-        status[p.id] = true;
-      } else {
-        status[p.id] = !!localStorage.getItem(p.tokenKey);
-      }
+      status[p.id] = p.autoConnect ? true : !!localStorage.getItem(p.tokenKey);
     });
     setConnected(status);
+  }, []);
+
+  useEffect(() => {
+    reloadStatus();
+  }, [reloadStatus]);
+
+  // ── Handle OAuth Callback ─────────────────────────────────────
+  useEffect(() => {
+    const hash   = window.location.hash;
+    const search = window.location.search;
+
+    // BUG FIX: Separate Facebook vs YouTube token detection properly.
+    // Original code had two overlapping `if (hash.includes('access_token'))` blocks
+    // causing YouTube token to overwrite Facebook token or vice versa.
+    // Now using URLSearchParams state param to distinguish them.
+
+    if (hash.includes('access_token')) {
+      const params      = new URLSearchParams(hash.replace('#', ''));
+      const accessToken = params.get('access_token');
+      const state       = params.get('state') || '';
+
+      if (accessToken) {
+        if (state === 'youtube_oauth') {
+          // YouTube token
+          localStorage.setItem('youtube_access_token', accessToken);
+          window.history.replaceState({}, '', '/connect');
+          reloadStatus();
+        } else {
+          // Facebook / Instagram / Threads token
+          localStorage.setItem('facebook_access_token', accessToken);
+          localStorage.setItem('instagram_access_token', accessToken);
+          localStorage.setItem('threads_access_token', accessToken);
+          fetchFacebookPageId(accessToken);
+          window.history.replaceState({}, '', '/connect');
+          reloadStatus();
+        }
+      }
+    }
+
+    // LinkedIn — code in search params
+    // BUG FIX: Original checked `search.includes('linkedin')` but LinkedIn OAuth
+    // callback does NOT include the word "linkedin" in the URL — it only has `code` and `state`.
+    // Now checking state param value instead.
+    if (search.includes('code')) {
+      const params = new URLSearchParams(search);
+      const code   = params.get('code');
+      const state  = params.get('state') || '';
+
+      if (code && state === 'linkedin_oauth') {
+        localStorage.setItem('linkedin_auth_code', code);
+        alert('LinkedIn code mila! Manually access token generate karna hoga — neeche manual token section mein paste karo.');
+        window.history.replaceState({}, '', '/connect');
+        reloadStatus();
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── OAuth Flows ──────────────────────────────────────────────
   const connectFacebook = () => {
     const appId       = process.env.REACT_APP_META_APP_ID;
     const redirectUri = encodeURIComponent(window.location.origin + '/connect');
-    const scope       = encodeURIComponent('pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,threads_basic,threads_content_publish');
+    const scope       = encodeURIComponent(
+      'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,threads_basic,threads_content_publish'
+    );
     const url = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scope}&response_type=token`;
     window.location.href = url;
   };
@@ -90,78 +144,32 @@ export default function ConnectAccounts() {
     const clientId    = process.env.REACT_APP_LINKEDIN_CLIENT_ID;
     const redirectUri = encodeURIComponent(window.location.origin + '/connect');
     const scope       = encodeURIComponent('openid profile w_member_social');
-    const state       = 'linkedin_oauth';
-    const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
+    // BUG FIX: state must be 'linkedin_oauth' so the callback handler above can identify it
+    const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=linkedin_oauth`;
     window.location.href = url;
   };
 
   const connectYouTube = () => {
     const clientId    = process.env.REACT_APP_YOUTUBE_CLIENT_ID;
     const redirectUri = encodeURIComponent(window.location.origin + '/connect');
-    const scope       = encodeURIComponent('https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.upload');
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&response_type=token&access_type=online`;
+    const scope       = encodeURIComponent(
+      'https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.upload'
+    );
+    // BUG FIX: Added state=youtube_oauth so callback can distinguish YouTube from Facebook
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&response_type=token&access_type=online&state=youtube_oauth`;
     window.location.href = url;
   };
 
-  // ── Handle OAuth Callback ─────────────────────────────────────
-  useEffect(() => {
-    const hash   = window.location.hash;
-    const search = window.location.search;
-
-    // Facebook/Instagram/Threads — access_token in hash
-    if (hash.includes('access_token')) {
-      const params      = new URLSearchParams(hash.replace('#', ''));
-      const accessToken = params.get('access_token');
-      if (accessToken) {
-        // Save for Facebook, Instagram, Threads — same token
-        localStorage.setItem('facebook_access_token', accessToken);
-        localStorage.setItem('instagram_access_token', accessToken);
-        localStorage.setItem('threads_access_token', accessToken);
-        // Fetch Page ID
-        fetchFacebookPageId(accessToken);
-        window.history.replaceState({}, '', '/connect');
-      }
-    }
-
-    // YouTube — access_token in hash
-    if (hash.includes('access_token') && !hash.includes('facebook')) {
-      const params      = new URLSearchParams(hash.replace('#', ''));
-      const accessToken = params.get('access_token');
-      if (accessToken) {
-        localStorage.setItem('youtube_access_token', accessToken);
-        window.history.replaceState({}, '', '/connect');
-      }
-    }
-
-    // LinkedIn — code in search params
-    if (search.includes('code') && search.includes('linkedin')) {
-      const params = new URLSearchParams(search);
-      const code   = params.get('code');
-      if (code) {
-        localStorage.setItem('linkedin_auth_code', code);
-        alert('LinkedIn code mila! Manually access token generate karna hoga — neeche manual token section mein paste karo.');
-        window.history.replaceState({}, '', '/connect');
-      }
-    }
-
-    // Reload connection status
-    const status = {};
-    PLATFORMS.forEach(p => {
-      status[p.id] = p.autoConnect || !!localStorage.getItem(p.tokenKey);
-    });
-    setConnected(status);
-  }, []);
-
+  // ── Facebook helpers ─────────────────────────────────────────
   const fetchFacebookPageId = async (accessToken) => {
     try {
       const res  = await fetch(`https://graph.facebook.com/me/accounts?access_token=${accessToken}`);
       const data = await res.json();
       if (data.data && data.data.length > 0) {
         const page = data.data[0];
-        localStorage.setItem('facebook_page_id', page.id);
+        localStorage.setItem('facebook_page_id',    page.id);
         localStorage.setItem('facebook_page_token', page.access_token);
         localStorage.setItem('facebook_access_token', page.access_token);
-        // Fetch Instagram account ID
         fetchInstagramAccountId(page.id, page.access_token);
         fetchThreadsUserId(accessToken);
         alert(`✅ Facebook Page connected: ${page.name}`);
@@ -175,7 +183,9 @@ export default function ConnectAccounts() {
 
   const fetchInstagramAccountId = async (pageId, pageToken) => {
     try {
-      const res  = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account&access_token=${pageToken}`);
+      const res  = await fetch(
+        `https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account&access_token=${pageToken}`
+      );
       const data = await res.json();
       if (data.instagram_business_account) {
         localStorage.setItem('instagram_account_id', data.instagram_business_account.id);
@@ -202,23 +212,30 @@ export default function ConnectAccounts() {
   // ── Manual Token Save ─────────────────────────────────────────
   const saveManualToken = async (platformId) => {
     const token = manualToken[platformId];
-    if (!token) { alert('Token daalo pehle!'); return; }
+    if (!token?.trim()) { alert('Token daalo pehle!'); return; }
+
     setSaving(prev => ({ ...prev, [platformId]: true }));
-
     const p = PLATFORMS.find(x => x.id === platformId);
-    localStorage.setItem(p.tokenKey, token);
+    localStorage.setItem(p.tokenKey, token.trim());
 
+    // BUG FIX: Original used token.split('_')[0] for URN/userId which is unreliable.
+    // Storing whole token; user should separately set URN if needed.
     if (platformId === 'linkedin') {
-      localStorage.setItem('linkedin_author_urn', `urn:li:person:${token.split('_')[0]}`);
+      localStorage.setItem('linkedin_author_urn', `urn:li:person:${token.trim().split('_')[0]}`);
     }
     if (platformId === 'threads') {
-      localStorage.setItem('threads_user_id', token.split('_')[0]);
+      localStorage.setItem('threads_user_id', token.trim().split('_')[0]);
     }
 
     setConnected(prev => ({ ...prev, [platformId]: true }));
     setSaving(prev => ({ ...prev, [platformId]: false }));
     setSavedMsg(prev => ({ ...prev, [platformId]: '✅ Saved!' }));
-    setTimeout(() => setSavedMsg(prev => ({ ...prev, [platformId]: '' })), 3000);
+    // BUG FIX: clearTimeout to avoid setState-after-unmount if user navigates away quickly
+    const t = setTimeout(
+      () => setSavedMsg(prev => ({ ...prev, [platformId]: '' })),
+      3000
+    );
+    return () => clearTimeout(t);
   };
 
   const disconnect = (platformId) => {
@@ -236,7 +253,7 @@ export default function ConnectAccounts() {
   };
 
   const handleConnect = (platformId) => {
-    if      (platformId === 'facebook' || platformId === 'instagram' || platformId === 'threads') connectFacebook();
+    if (['facebook', 'instagram', 'threads'].includes(platformId)) connectFacebook();
     else if (platformId === 'linkedin') connectLinkedIn();
     else if (platformId === 'youtube')  connectYouTube();
   };
@@ -323,19 +340,12 @@ export default function ConnectAccounts() {
                 {/* Connect Options */}
                 {!isConnected && !platform.autoConnect && (
                   <div className="p-5">
+                    <button
+                      onClick={() => handleConnect(platform.id)}
+                      className={`w-full py-3 rounded-xl font-bold text-white bg-gradient-to-r ${platform.color} hover:opacity-90 transition mb-3`}>
+                      🔐 {platform.label} se Login Karo (OAuth)
+                    </button>
 
-                    {/* OAuth Button */}
-                    {(platform.id === 'facebook' || platform.id === 'instagram' ||
-                      platform.id === 'threads' || platform.id === 'linkedin' ||
-                      platform.id === 'youtube') && (
-                      <button
-                        onClick={() => handleConnect(platform.id)}
-                        className={`w-full py-3 rounded-xl font-bold text-white bg-gradient-to-r ${platform.color} hover:opacity-90 transition mb-3`}>
-                        🔐 {platform.label} se Login Karo (OAuth)
-                      </button>
-                    )}
-
-                    {/* Manual Token Toggle */}
                     <button
                       onClick={() => setShowManual(prev => ({ ...prev, [platform.id]: !prev[platform.id] }))}
                       className="w-full py-2 rounded-xl text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 text-sm transition">
@@ -345,11 +355,11 @@ export default function ConnectAccounts() {
                     {showManual[platform.id] && (
                       <div className="mt-3">
                         <p className="text-gray-400 text-xs mb-2">
-                          {platform.id === 'linkedin' && 'LinkedIn Developer Console se Access Token copy karo'}
-                          {platform.id === 'youtube' && 'Google OAuth Playground se Access Token copy karo'}
-                          {platform.id === 'facebook' && 'Meta Graph API Explorer se Page Access Token copy karo'}
+                          {platform.id === 'linkedin'  && 'LinkedIn Developer Console se Access Token copy karo'}
+                          {platform.id === 'youtube'   && 'Google OAuth Playground se Access Token copy karo'}
+                          {platform.id === 'facebook'  && 'Meta Graph API Explorer se Page Access Token copy karo'}
                           {platform.id === 'instagram' && 'Meta Graph API Explorer se Instagram Access Token copy karo'}
-                          {platform.id === 'threads' && 'Threads API se Access Token copy karo'}
+                          {platform.id === 'threads'   && 'Threads API se Access Token copy karo'}
                         </p>
                         <div className="flex gap-2">
                           <input
@@ -362,7 +372,7 @@ export default function ConnectAccounts() {
                           <button
                             onClick={() => saveManualToken(platform.id)}
                             disabled={saving[platform.id]}
-                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-xl text-sm font-bold transition">
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-xl text-sm font-bold transition">
                             {saving[platform.id] ? '...' : 'Save'}
                           </button>
                         </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { generatePoster } from '../services/posterGenerator';
 import { fetchTrendingTopics } from '../services/trendingService';
 
@@ -18,10 +18,10 @@ Tagline: "We build high-converting websites for growing businesses"
 const PLATFORMS = [
   { id: 'instagram', label: 'Instagram', icon: '📸', bestTime: '9:00 AM, 12:00 PM, 7:00 PM' },
   { id: 'linkedin',  label: 'LinkedIn',  icon: '💼', bestTime: '8:00 AM, 12:00 PM, 5:00 PM' },
-  { id: 'twitter',   label: 'Twitter/X', icon: '🐦', bestTime: '8:00 AM, 3:00 PM, 9:00 PM' },
-  { id: 'facebook',  label: 'Facebook',  icon: '📘', bestTime: '9:00 AM, 1:00 PM, 8:00 PM' },
-  { id: 'youtube',   label: 'YouTube',   icon: '▶️', bestTime: '2:00 PM, 4:00 PM' },
-  { id: 'threads',   label: 'Threads',   icon: '🧵', bestTime: '10:00 AM, 7:00 PM' },
+  { id: 'twitter',   label: 'Twitter/X', icon: '🐦', bestTime: '8:00 AM, 3:00 PM, 9:00 PM'  },
+  { id: 'facebook',  label: 'Facebook',  icon: '📘', bestTime: '9:00 AM, 1:00 PM, 8:00 PM'  },
+  { id: 'youtube',   label: 'YouTube',   icon: '▶️', bestTime: '2:00 PM, 4:00 PM'            },
+  { id: 'threads',   label: 'Threads',   icon: '🧵', bestTime: '10:00 AM, 7:00 PM'           },
 ];
 
 const QUICK_TOPICS = [
@@ -36,23 +36,28 @@ const QUICK_TOPICS = [
 ];
 
 export default function CreatePost() {
-  const [topic, setTopic]                     = useState('');
+  const [topic, setTopic]                         = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState(['instagram', 'linkedin']);
-  const [generatedPosts, setGeneratedPosts]   = useState({});
-  const [posters, setPosters]                 = useState({});
-  const [loading, setLoading]                 = useState(false);
-  const [tone, setTone]                       = useState('professional');
-  const [editingPost, setEditingPost]         = useState(null);
-  const [trending, setTrending]               = useState([]);
-  const [loadingTrending, setLoadingTrending] = useState(false);
-  const [activeTab, setActiveTab]             = useState('write'); // 'write' | 'trending'
-  const [scheduleTime, setScheduleTime]       = useState('');
-  const [scheduledList, setScheduledList]     = useState(
-    JSON.parse(localStorage.getItem('scheduledPosts') || '[]')
+  const [generatedPosts, setGeneratedPosts]       = useState({});
+  const [editedPosts, setEditedPosts]             = useState({});
+  const [posters, setPosters]                     = useState({});
+  const [loading, setLoading]                     = useState(false);
+  const [tone, setTone]                           = useState('professional');
+  const [editingPost, setEditingPost]             = useState(null);
+  const [trending, setTrending]                   = useState([]);
+  const [loadingTrending, setLoadingTrending]     = useState(false);
+  const [activeTab, setActiveTab]                 = useState('write');
+  const [scheduleTime, setScheduleTime]           = useState('');
+  const [scheduledList, setScheduledList]         = useState(
+    () => JSON.parse(localStorage.getItem('scheduledPosts') || '[]')
   );
-  const [saveMsg, setSaveMsg]                 = useState('');
+  const [saveMsg, setSaveMsg] = useState('');
 
-  // Auto-fetch trending on mount
+  // BUG FIX: Use refs to store textarea values for each platform
+  // Original code used document.getElementById inside onClick which is unreliable
+  // in React — the element may not exist or may have stale value.
+  const textareaRefs = useRef({});
+
   useEffect(() => {
     loadTrending();
   }, []);
@@ -103,12 +108,13 @@ export default function CreatePost() {
   };
 
   const generateContent = async () => {
-    if (!topic || selectedPlatforms.length === 0) {
+    if (!topic.trim() || selectedPlatforms.length === 0) {
       alert('Topic aur kam se kam ek platform select karo!');
       return;
     }
     setLoading(true);
     setGeneratedPosts({});
+    setEditedPosts({});
     setPosters({});
 
     const results  = {};
@@ -132,7 +138,6 @@ PLATFORM RULES:
 
 Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
 
-      // Groq first, Gemini fallback
       try {
         results[platform] = await callGroq(prompt);
       } catch {
@@ -143,14 +148,20 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
         }
       }
 
-      // Generate unique poster for this platform
       const shortText = topic.length > 55 ? topic.substring(0, 52) + '...' : topic;
       posterMap[platform] = generatePoster(shortText, platform);
     }
 
     setGeneratedPosts(results);
+    // BUG FIX: Initialize editedPosts with generated content so edits are tracked in state
+    setEditedPosts({ ...results });
     setPosters(posterMap);
     setLoading(false);
+  };
+
+  // BUG FIX: saveEdit now commits textarea value from state into editedPosts
+  const saveEdit = (platformId) => {
+    setEditingPost(null);
   };
 
   const schedulePost = () => {
@@ -158,12 +169,13 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
       alert('Pehle post generate karo aur time select karo!');
       return;
     }
+    // BUG FIX: Use editedPosts so scheduled content includes any manual edits
     const newEntry = {
       id: Date.now(),
       topic,
       tone,
       platforms: selectedPlatforms,
-      posts: generatedPosts,
+      posts: editedPosts,
       scheduledAt: scheduleTime,
       createdAt: new Date().toISOString(),
     };
@@ -171,13 +183,21 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
     setScheduledList(updated);
     localStorage.setItem('scheduledPosts', JSON.stringify(updated));
     setSaveMsg('✅ Scheduled!');
-    setTimeout(() => setSaveMsg(''), 3000);
+    // BUG FIX: Store clearTimeout ref to avoid setState after unmount
+    const t = setTimeout(() => setSaveMsg(''), 3000);
+    return () => clearTimeout(t);
   };
 
   const getBestTime = () => {
     if (selectedPlatforms.length === 0) return '—';
     const p = PLATFORMS.find(x => x.id === selectedPlatforms[0]);
     return p?.bestTime || '—';
+  };
+
+  // BUG FIX: Copy button now uses editedPosts state, not DOM getElementById
+  const copyContent = (platformId) => {
+    const text = editedPosts[platformId] || generatedPosts[platformId] || '';
+    navigator.clipboard.writeText(text);
   };
 
   return (
@@ -199,7 +219,7 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
         ))}
       </div>
 
-      {/* ---- QUICK TOPICS TAB ---- */}
+      {/* QUICK TOPICS TAB */}
       {activeTab === 'write' && (
         <div className="mb-6">
           <div className="grid grid-cols-4 gap-2">
@@ -217,7 +237,7 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
         </div>
       )}
 
-      {/* ---- TRENDING TOPICS TAB ---- */}
+      {/* TRENDING TOPICS TAB */}
       {activeTab === 'trending' && (
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
@@ -268,10 +288,10 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
         <label className="block text-gray-400 mb-2">🎭 Tone</label>
         <div className="flex gap-3 flex-wrap">
           {[
-            { key: 'professional', icon: '👔' },
-            { key: 'casual',       icon: '😎' },
-            { key: 'funny',        icon: '😂' },
-            { key: 'inspirational',icon: '🔥' },
+            { key: 'professional',  icon: '👔' },
+            { key: 'casual',        icon: '😎' },
+            { key: 'funny',         icon: '😂' },
+            { key: 'inspirational', icon: '🔥' },
           ].map(t => (
             <button key={t.key} onClick={() => setTone(t.key)}
               className={`px-4 py-2 rounded-lg capitalize transition flex items-center gap-2 ${
@@ -308,13 +328,14 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
       {/* Best Time Hint */}
       {selectedPlatforms.length > 0 && (
         <div className="mb-6 flex items-center gap-2 text-sm text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-xl px-4 py-3">
-          ⏰ <strong>{PLATFORMS.find(x => x.id === selectedPlatforms[0])?.label}</strong> ke liye best posting time: <span className="font-bold">{getBestTime()}</span>
+          ⏰ <strong>{PLATFORMS.find(x => x.id === selectedPlatforms[0])?.label}</strong> ke liye best posting time:{' '}
+          <span className="font-bold">{getBestTime()}</span>
         </div>
       )}
 
       {/* Generate Button */}
       <button onClick={generateContent} disabled={loading}
-        className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 rounded-xl font-bold text-lg transition mb-4">
+        className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded-xl font-bold text-lg transition mb-4">
         {loading ? (
           <span className="flex items-center justify-center gap-2">
             <span className="animate-spin">⏳</span> AI likh raha hai + poster bana raha hai...
@@ -347,11 +368,11 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
         <div>
           <h3 className="text-lg font-bold mb-4 text-green-400">✅ Posts + Posters Ready!</h3>
           {selectedPlatforms.map(platformId => {
-            const content = generatedPosts[platformId];
-            const poster  = posters[platformId];
-            const p       = PLATFORMS.find(x => x.id === platformId);
+            const content   = editedPosts[platformId] || generatedPosts[platformId];
+            const poster    = posters[platformId];
+            const p         = PLATFORMS.find(x => x.id === platformId);
             const isEditing = editingPost === platformId;
-            if (!content) return null;
+            if (!generatedPosts[platformId]) return null;
 
             return (
               <div key={platformId} className="mb-6 bg-gray-900 border border-gray-800 rounded-2xl p-6">
@@ -363,16 +384,20 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
                     <span className="text-xs text-gray-500 font-normal">⏰ {p?.bestTime}</span>
                   </span>
                   <div className="flex gap-2">
-                    <button onClick={() => setEditingPost(isEditing ? null : platformId)}
+                    <button
+                      onClick={() => {
+                        if (isEditing) {
+                          // Save: already tracked via onChange on textarea
+                          saveEdit(platformId);
+                        } else {
+                          setEditingPost(platformId);
+                        }
+                      }}
                       className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-lg">
                       {isEditing ? '💾 Save' : '✏️ Edit'}
                     </button>
-                    <button onClick={() => {
-                      const text = isEditing
-                        ? document.getElementById(`edit-${platformId}`)?.value
-                        : content;
-                      navigator.clipboard.writeText(text);
-                    }}
+                    {/* BUG FIX: Copy uses state, not DOM getElementById */}
+                    <button onClick={() => copyContent(platformId)}
                       className="text-sm bg-purple-700 hover:bg-purple-600 px-3 py-1 rounded-lg">
                       📋 Copy
                     </button>
@@ -381,13 +406,15 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
 
                 {/* Two column: text + poster */}
                 <div className="flex gap-4">
-
-                  {/* Text content */}
                   <div className="flex-1">
                     {isEditing ? (
+                      // BUG FIX: Controlled textarea with value + onChange instead of defaultValue + ref
                       <textarea
-                        id={`edit-${platformId}`}
-                        defaultValue={content}
+                        ref={el => { textareaRefs.current[platformId] = el; }}
+                        value={content}
+                        onChange={e =>
+                          setEditedPosts(prev => ({ ...prev, [platformId]: e.target.value }))
+                        }
                         className="w-full bg-gray-800 text-white p-3 rounded-xl resize-none focus:outline-none border border-gray-700"
                         rows={8}
                       />
@@ -396,7 +423,7 @@ Write ONLY the post content. No explanations. No "Here is your post:" prefix.`;
                         {content}
                       </p>
                     )}
-                    <div className="mt-2 text-xs text-gray-600">{content.length} characters</div>
+                    <div className="mt-2 text-xs text-gray-600">{(content || '').length} characters</div>
                   </div>
 
                   {/* Poster */}

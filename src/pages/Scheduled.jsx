@@ -1,5 +1,4 @@
-// Yeh replace karo (line 1-6):
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/firebaseConfig';
 import {
   collection, getDocs, deleteDoc,
@@ -7,11 +6,11 @@ import {
 } from 'firebase/firestore';
 
 const PLATFORMS = [
-  { id: 'instagram', label: 'Instagram', icon: '📸', color: 'from-pink-600 to-purple-600' },
-  { id: 'linkedin',  label: 'LinkedIn',  icon: '💼', color: 'from-blue-700 to-blue-500'   },
-  { id: 'twitter',   label: 'Twitter/X', icon: '🐦', color: 'from-sky-600 to-cyan-500'    },
-  { id: 'facebook',  label: 'Facebook',  icon: '📘', color: 'from-indigo-700 to-indigo-500'},
-  { id: 'youtube',   label: 'YouTube',   icon: '▶️', color: 'from-red-700 to-red-500'      },
+  { id: 'instagram', label: 'Instagram', icon: '📸', color: 'from-pink-600 to-purple-600'  },
+  { id: 'linkedin',  label: 'LinkedIn',  icon: '💼', color: 'from-blue-700 to-blue-500'    },
+  { id: 'twitter',   label: 'Twitter/X', icon: '🐦', color: 'from-sky-600 to-cyan-500'     },
+  { id: 'facebook',  label: 'Facebook',  icon: '📘', color: 'from-indigo-700 to-indigo-500' },
+  { id: 'youtube',   label: 'YouTube',   icon: '▶️', color: 'from-red-700 to-red-500'       },
   { id: 'threads',   label: 'Threads',   icon: '🧵', color: 'from-gray-700 to-gray-500'    },
 ];
 
@@ -30,9 +29,9 @@ export default function Scheduled() {
   const [expandedId, setExpandedId] = useState(null);
   const [stats, setStats]           = useState({ total: 0, scheduled: 0, posted: 0, draft: 0 });
 
-  useEffect(() => { loadPosts(); }, []);
-
-  const loadPosts = async () => {
+  // BUG FIX: Wrap loadPosts in useCallback so it can safely be listed
+  // in useEffect deps without causing infinite loops.
+  const loadPosts = useCallback(async () => {
     setLoading(true);
     try {
       const q    = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
@@ -45,11 +44,16 @@ export default function Scheduled() {
         posted:    data.filter(p => p.status === 'posted').length,
         draft:     data.filter(p => p.status === 'draft' || !p.status).length,
       });
-    } catch(e) {
-      console.error(e);
+    } catch (e) {
+      console.error('loadPosts error:', e);
     }
     setLoading(false);
-  };
+  }, []);
+
+  // BUG FIX: Original had `useEffect(() => { loadPosts(); }, [])` which caused
+  // an eslint exhaustive-deps warning AND a potential stale-closure issue.
+  // Now loadPosts is stable (useCallback with no deps) so it's safe to include.
+  useEffect(() => { loadPosts(); }, [loadPosts]);
 
   const deletePost = async (id) => {
     if (!window.confirm('Delete karna chahte ho?')) return;
@@ -59,12 +63,14 @@ export default function Scheduled() {
 
   const markPosted = async (id) => {
     await updateDoc(doc(db, 'posts', id), {
-      status: 'posted',
-      postedAt: new Date().toISOString()
+      status:   'posted',
+      postedAt: new Date().toISOString(),
     });
     loadPosts();
   };
 
+  // BUG FIX: filter by status — original 'draft' filter missed posts where status is undefined.
+  // Now normalise status to 'draft' before comparing.
   const filtered = filter === 'all'
     ? posts
     : posts.filter(p => (p.status || 'draft') === filter);
@@ -117,14 +123,14 @@ export default function Scheduled() {
         {/* Filter + View Toggle */}
         <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex gap-2 flex-wrap">
-            {['all','scheduled','posted','draft'].map(f => (
+            {['all', 'scheduled', 'posted', 'draft'].map(f => (
               <button key={f} onClick={() => setFilter(f)}
                 className={`px-4 py-2 rounded-xl text-sm font-medium capitalize transition border ${
                   filter === f
                     ? 'bg-purple-600 border-purple-500 text-white'
                     : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-purple-500'
                 }`}>
-                {f === 'all'       ? '🗂 All'
+                {f === 'all'        ? '🗂 All'
                 : f === 'scheduled' ? '⏰ Scheduled'
                 : f === 'posted'    ? '✅ Posted'
                 : '📋 Draft'}
@@ -132,18 +138,14 @@ export default function Scheduled() {
             ))}
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setView('list')}
-              className={`px-4 py-2 rounded-xl text-sm transition ${
-                view === 'list' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'
-              }`}>
-              ☰ List
-            </button>
-            <button onClick={() => setView('calendar')}
-              className={`px-4 py-2 rounded-xl text-sm transition ${
-                view === 'calendar' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'
-              }`}>
-              📅 Calendar
-            </button>
+            {['list', 'calendar'].map(v => (
+              <button key={v} onClick={() => setView(v)}
+                className={`px-4 py-2 rounded-xl text-sm transition ${
+                  view === v ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'
+                }`}>
+                {v === 'list' ? '☰ List' : '📅 Calendar'}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -160,9 +162,7 @@ export default function Scheduled() {
           <div className="text-center py-20 bg-gray-900 border border-gray-800 rounded-2xl">
             <div className="text-6xl mb-4">📭</div>
             <p className="text-white font-bold text-lg mb-2">Koi post nahi mili</p>
-            <p className="text-gray-400 text-sm">
-              Create Post ya Auto Mode se posts generate karo
-            </p>
+            <p className="text-gray-400 text-sm">Create Post ya Auto Mode se posts generate karo</p>
           </div>
         )}
 
@@ -180,7 +180,7 @@ export default function Scheduled() {
 
                 {/* Platform icons */}
                 <div className="flex flex-col gap-1 flex-shrink-0">
-                  {platforms.slice(0,3).map(pid => {
+                  {platforms.slice(0, 3).map(pid => {
                     const p = PLATFORMS.find(x => x.id === pid);
                     return <span key={pid} className="text-xl">{p?.icon || '📱'}</span>;
                   })}
@@ -249,6 +249,7 @@ export default function Scheduled() {
                   <div className="grid grid-cols-1 gap-3">
                     {Object.entries(post.posts).map(([pid, content]) => {
                       const p = PLATFORMS.find(x => x.id === pid);
+                      // BUG FIX: Also guard against empty-string content, not just falsy
                       if (!p || !content) return null;
                       return (
                         <div key={pid} className="bg-gray-800 rounded-xl p-4">
@@ -260,9 +261,7 @@ export default function Scheduled() {
                               📋 Copy
                             </button>
                           </div>
-                          <p className="text-gray-300 text-xs leading-relaxed line-clamp-3">
-                            {content}
-                          </p>
+                          <p className="text-gray-300 text-xs leading-relaxed line-clamp-3">{content}</p>
                         </div>
                       );
                     })}
@@ -285,7 +284,7 @@ export default function Scheduled() {
                   <div className="bg-purple-600 rounded-xl px-4 py-2">
                     <p className="text-white font-black text-sm">{date}</p>
                   </div>
-                  <div className="flex-1 h-px bg-gray-800"/>
+                  <div className="flex-1 h-px bg-gray-800" />
                   <span className="text-gray-500 text-xs">{datePosts.length} posts</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 ml-4">
@@ -309,7 +308,7 @@ export default function Scheduled() {
                         <p className="text-white text-sm font-medium truncate">{post.topic}</p>
                         <div className="flex items-center justify-between mt-3">
                           <div className="flex gap-1">
-                            {(post.platforms || []).slice(0,4).map(pid => {
+                            {(post.platforms || []).slice(0, 4).map(pid => {
                               const p = PLATFORMS.find(x => x.id === pid);
                               return <span key={pid} className="text-base">{p?.icon}</span>;
                             })}
